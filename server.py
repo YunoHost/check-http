@@ -62,7 +62,7 @@ async def check_http(request):
                 "status": "error",
                 "code": "error_rate_limit",
                 "content": f"Rate limit on ip, retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds",
-            })
+            }, status=400)
 
     RATE_LIMIT_DB[ip] = time.time()
 
@@ -74,7 +74,7 @@ async def check_http(request):
             "status": "error",
             "code": "error_bad_json",
             "content": "InvalidUsage, body isn't proper json",
-        })
+        }, status=400)
 
     if not data or "domain" not in data:
         logger.info(f"Unvalid request didn't specified a domain (body is : {request.body}")
@@ -82,7 +82,7 @@ async def check_http(request):
             "status": "error",
             "code": "error_no_domain",
             "content": "request must specify a domain",
-        })
+        }, status=400)
 
     domain = data["domain"]
 
@@ -94,7 +94,7 @@ async def check_http(request):
                 "status": "error",
                 "code": "error_rate_limit",
                 "content": f"Rate limit on domain, retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds",
-            })
+            }, status=400)
 
     RATE_LIMIT_DB[domain] = time.time()
 
@@ -104,7 +104,7 @@ async def check_http(request):
             "status": "error",
             "code": "error_domain_bad_format",
             "content": "domain is not in the right format (do not include http:// or https://)",
-        })
+        }, status=400)
 
     # TODO handle ipv6
     # ipv6 situation
@@ -122,7 +122,7 @@ async def check_http(request):
                     "status": "error",
                     "code": "error_no_ipv6_dns_entry_but_ipv4_dns_entry",
                     "content": f"there is not AAAA (ipv6) DNS entry for domain {domain} BUT there is an entry in ipv4, please redo the request in ipv4",
-                })
+                }, status=400)
 
             else:
                 logger.info(f"[ipv6] Invalid request, no DNS entry for domain {domain} (both in ipv6 and ip4)")
@@ -130,7 +130,7 @@ async def check_http(request):
                     "status": "error",
                     "code": "error_no_ipv4_ipv6_dns_entry_for_domain",
                     "content": f"there is not A (ipv4) and AAAA (ipv6) DNS entry for domain {domain}",
-                })
+                }, status=400)
     # ipv4 situation
     else:
         dns_entry = await query_dns(domain, "A")
@@ -141,7 +141,7 @@ async def check_http(request):
                 "status": "error",
                 "code": "error_no_ipv4_dns_entry_for_domain",
                 "content": f"there is not A (ipv4) and AAAA (ipv6) DNS entry for domain {domain}",
-            })
+            }, status=400)
 
     dns_entry = dns_entry[0]
 
@@ -151,7 +151,7 @@ async def check_http(request):
             "status": "error",
             "code": "error_dns_entry_doesnt_match_request_ip",
             "content": f"error, the request is made from the ip {ip} but the dns entry said {domain} has the ip {dns_entry.host}, you can only check a domain configured for your ip",
-        })
+        }, status=400)
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -166,7 +166,7 @@ async def check_http(request):
                 "status": "error",
                 "code": "error_http_check_connection_error",
                 "content": "connection error, could not connect to the requested domain, it's very likely unreachable",
-            })
+            }, status=400)
         except Exception:
             import traceback
             traceback.print_exc()
@@ -175,7 +175,7 @@ async def check_http(request):
                 "status": "error",
                 "code": "error_http_check_unknown_error",
                 "content": "an error happen while trying to get your domain, it's very likely unreachable",
-            })
+            }, status=400)
 
     return json_response({"status": "ok"})
 
