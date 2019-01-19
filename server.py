@@ -1,4 +1,5 @@
 import aiohttp
+import validators
 
 from sanic import Sanic
 from sanic.log import logger
@@ -26,6 +27,10 @@ async def check_http(request):
         return json_response({"status": "error", "content": "request must specify a domain"})
 
     domain = data["domain"]
+
+    if not validators.domain(domain):
+        logger.info(f"Invalid request, is not in the right format (domain is : {domain})")
+        return json_response({"status": "error", "content": "domain is not in the right format (do not include http:// or https://)"})
 
     # TODO DNS check
 
