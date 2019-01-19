@@ -48,6 +48,23 @@ async def query_dns(host, dns_entry_type):
 
 @app.route("/check/", methods=["POST"])
 async def check_http(request):
+    """
+    This function received an HTTP request from a YunoHost instance while this
+    server is hosted on our infrastructure. The expected request body is:
+    {"domain": "domain-to-check.tld"} and the method POST
+
+    The general workflow is the following:
+
+    - grab the ip from the request
+    - check for ip based rate limit (see RATE_LIMIT_SECONDS value)
+    - get json from body and domain from it
+    - check for domain based rate limit (see RATE_LIMIT_SECONDS value)
+    - check domain is in valid format
+    - check dns entry for domain match the ip of the request (advanced rule for ipv6)
+    - everything is checked, now try to do an http request on the domain
+    - answer saying if the domain can be reached
+    """
+
     # this is supposed to be a fast operation if run enough
     now = time.time()
     clear_rate_limit_db(now)
