@@ -1,3 +1,5 @@
+import asyncio
+import aiodns
 import aiohttp
 import validators
 
@@ -41,7 +43,28 @@ async def check_http(request):
             "content": "domain is not in the right format (do not include http:// or https://)",
         })
 
-    # TODO DNS check
+    # TODO handle ipv6
+    loop = asyncio.get_event_loop()
+    dns_resolver = aiodns.DNSResolver(loop=loop)
+    dns_entry = await dns_resolver.query(domain, 'A')
+
+    if not dns_entry:
+        logger.info(f"Invalid request, not A DNS entry for domain {domain})")
+        return json_response({
+            "status": "error",
+            "code": "error_no_dns_entry_for_domain",
+            "content": "there is not A (ipv4) DNS entry for domain {domain}",
+        })
+
+    dns_entry = dns_entry[0]
+
+    if dns_entry.host != ip:
+        logger.info(f"Invalid request, not A DNS entry for domain {domain})")
+        return json_response({
+            "status": "error",
+            "code": "error_dns_entry_doesnt_match_request_ip",
+            "content": "error, the request is made from the ip {ip} but the dns entry said {domain} has the ip {dns_entry.host}, you can only check a domain configured for your ip",
+        })
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -71,8 +94,9 @@ async def check_http(request):
     # [x] - get request json
     # [x] - in request json get domain target
     # [x] - validate domain is in correct format
-    # [ ] - check dns that domain == ip
-    # [ ] - if not, complain
+    # [x] - check dns that domain == ip
+    # [x] - if not, complain
+    # [ ] - handle ipv6
     # [x] - if everything is ok, try to get with http
     # [x] - ADD TIMEOUT
     # [x] - try/catch, if everything is ok → response ok
