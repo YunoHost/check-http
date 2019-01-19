@@ -11,6 +11,20 @@ from sanic.exceptions import InvalidUsage
 app = Sanic()
 
 
+async def query_dns(host, dns_entry_type):
+    loop = asyncio.get_event_loop()
+    dns_resolver = aiodns.DNSResolver(loop=loop)
+
+    try:
+        return await dns_resolver.query(host, dns_entry_type)
+    except aiodns.error.DNSError:
+        return []
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        logger.error("Unhandled error while resolving DNS entry")
+
+
 @app.route("/check/", methods=["POST"])
 async def check_http(request):
     ip = request.ip
@@ -44,26 +58,50 @@ async def check_http(request):
         })
 
     # TODO handle ipv6
-    loop = asyncio.get_event_loop()
-    dns_resolver = aiodns.DNSResolver(loop=loop)
-    dns_entry = await dns_resolver.query(domain, 'A')
+    # ipv6 situation
+    if ":" in ip:
+        dns_entry = await query_dns(domain, "AAAA")
 
-    if not dns_entry:
-        logger.info(f"Invalid request, not A DNS entry for domain {domain})")
-        return json_response({
-            "status": "error",
-            "code": "error_no_dns_entry_for_domain",
-            "content": "there is not A (ipv4) DNS entry for domain {domain}",
-        })
+        if not dns_entry:
+            # check if entry in ip4 for custom error
+            dns_entry = await query_dns(domain, "A")
+
+            # there is an ipv4 entry but the request is made in ipv6, ask to uses ipv4 instead
+            if dns_entry:
+                logger.info(f"[ipv6] Invalid request, no AAAA DNS entry for domain {domain} BUT ipv4 entry, ask user to request in ipv4")
+                return json_response({
+                    "status": "error",
+                    "code": "error_no_ipv6_dns_entry_but_ipv4_dns_entry",
+                    "content": f"there is not AAAA (ipv6) DNS entry for domain {domain} BUT there is an entry in ipv4, please redo the request in ipv4",
+                })
+
+            else:
+                logger.info(f"[ipv6] Invalid request, no DNS entry for domain {domain} (both in ipv6 and ip4)")
+                return json_response({
+                    "status": "error",
+                    "code": "error_no_ipv4_ipv6_dns_entry_for_domain",
+                    "content": f"there is not A (ipv4) and AAAA (ipv6) DNS entry for domain {domain}",
+                })
+    # ipv4 situation
+    else:
+        dns_entry = await query_dns(domain, "A")
+
+        if not dns_entry:
+            logger.info(f"[ipv4] Invalid request, no DNS entry for domain {domain}")
+            return json_response({
+                "status": "error",
+                "code": "error_no_ipv4_dns_entry_for_domain",
+                "content": f"there is not A (ipv4) and AAAA (ipv6) DNS entry for domain {domain}",
+            })
 
     dns_entry = dns_entry[0]
 
     if dns_entry.host != ip:
-        logger.info(f"Invalid request, not A DNS entry for domain {domain})")
+        logger.info(f"Invalid request, A DNS entry {dns_entry.host} for domain {domain} doesn't match request ip {ip}")
         return json_response({
             "status": "error",
             "code": "error_dns_entry_doesnt_match_request_ip",
-            "content": "error, the request is made from the ip {ip} but the dns entry said {domain} has the ip {dns_entry.host}, you can only check a domain configured for your ip",
+            "content": f"error, the request is made from the ip {ip} but the dns entry said {domain} has the ip {dns_entry.host}, you can only check a domain configured for your ip",
         })
 
     async with aiohttp.ClientSession() as session:
@@ -96,7 +134,7 @@ async def check_http(request):
     # [x] - validate domain is in correct format
     # [x] - check dns that domain == ip
     # [x] - if not, complain
-    # [ ] - handle ipv6
+    # [x] - handle ipv6
     # [x] - if everything is ok, try to get with http
     # [x] - ADD TIMEOUT
     # [x] - try/catch, if everything is ok → response ok
