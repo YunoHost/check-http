@@ -7,6 +7,6 @@ This is done because some network configration prevent HTTP loopback.
 
 # Installation
 
-This is a travial python 3 (yes 3) project to install, juste create a
+This is a trivial python 3 (yes 3) project to install, juste create a
 virtualenv, install the content of the requirements.txt (there is a "-frozen"
 version if need) and do `python server.py`. No other configuration/db needed.
