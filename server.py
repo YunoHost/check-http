@@ -70,7 +70,7 @@ async def check_http(request):
     # [x] - get ip
     # [x] - get request json
     # [x] - in request json get domain target
-    # [ ] - validate domain is in correct format
+    # [x] - validate domain is in correct format
     # [ ] - check dns that domain == ip
     # [ ] - if not, complain
     # [x] - if everything is ok, try to get with http
