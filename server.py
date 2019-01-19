@@ -1,6 +1,7 @@
-import json
+import aiohttp
 
 from sanic import Sanic
+from sanic.log import logger
 from sanic.response import html, json as json_response
 from sanic.exceptions import InvalidUsage
 
@@ -9,33 +10,51 @@ app = Sanic()
 
 @app.route("/check/", methods=["POST"])
 async def check_http(request):
-    from ipdb import set_trace; set_trace()
     ip = request.ip
 
     try:
         data = request.json
     except InvalidUsage:
+        logger.info(f"Unvalid json in request, body is : {request.body}")
         return json_response({
             "status": "error",
             "content": "InvalidUsage, body isn't proper json"
         })
 
-    if "domain" not in data:
+    if not data or "domain" not in data:
+        logger.info(f"Unvalid request didn't specified a domain (body is : {request.body}")
         return json_response({"status": "error", "content": "request must specify a domain"})
 
     domain = data["domain"]
 
     # TODO DNS check
 
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get("http://" + domain, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                # XXX in the futur try to do a double check with the server to
+                # see if the correct content is get
+                await response.text()
+                logger.info(f"Success when checking http access for {domain} asked by {ip}")
+        # TODO various kind of errors
+        except aiohttp.client_exceptions.ClientConnectorError:
+            return json_response({"status": "error", "content": "connection error, could not connect to the requested domain, it's very likely unreachable"})
+        except Exception:
+            import traceback
+            traceback.print_exc()
+
+            return json_response({"status": "error", "content": "an error happen while trying to get your domain, it's very likely unreachable"})
+
     # [x] - get ip
     # [x] - get request json
     # [x] - in request json get domain target
+    # [ ] - validate domain is in correct format
     # [ ] - check dns that domain == ip
     # [ ] - if not, complain
-    # [ ] - if everything is ok, try to get with http
-    # [ ] - ADD TIMEOUT
-    # [ ] - try/catch, if everything is ok → response ok
-    # [ ] - otherwise reponse with exception
+    # [x] - if everything is ok, try to get with http
+    # [x] - ADD TIMEOUT
+    # [x] - try/catch, if everything is ok → response ok
+    # [x] - otherwise reponse with exception
 
     return json_response({"status": "ok"})
 
