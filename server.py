@@ -183,7 +183,7 @@ async def check_http(request):
                 "status": "error",
                 "code": "error_http_check_connection_error",
                 "content": "connection error, could not connect to the requested domain, it's very likely unreachable",
-            }, status=400)
+            }, status=418)
         except Exception:
             import traceback
             traceback.print_exc()
