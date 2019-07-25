@@ -32,6 +32,21 @@ def clear_rate_limit_db(now):
         del RATE_LIMIT_DB[key]
 
 
+def check_rate_limit(key, now):
+
+    if key in RATE_LIMIT_DB:
+        since_last_attempt = now - RATE_LIMIT_DB[key]
+        if since_last_attempt < RATE_LIMIT_SECONDS:
+            logger.info(f"Rate limit reached for {key}, can retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds")
+            return json_response({
+                "status": "error",
+                "code": "error_rate_limit",
+                "content": f"Rate limit reached for this domain or ip, retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds",
+            }, status=400)
+
+    RATE_LIMIT_DB[key] = time.time()
+
+
 async def query_dns(host, dns_entry_type):
     loop = asyncio.get_event_loop()
     dns_resolver = aiodns.DNSResolver(loop=loop)
@@ -65,32 +80,24 @@ async def check_http(request):
     - answer saying if the domain can be reached
     """
 
-    # this is supposed to be a fast operation if run enough
+    # this is supposed to be a fast operation if run often enough
     now = time.time()
     clear_rate_limit_db(now)
 
     ip = request.ip
 
-    if ip in RATE_LIMIT_DB:
-        since_last_attempt = now - RATE_LIMIT_DB[ip]
-        if since_last_attempt < RATE_LIMIT_SECONDS:
-            logger.info(f"Rate limite {ip}, can retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds")
-            return json_response({
-                "status": "error",
-                "code": "error_rate_limit",
-                "content": f"Rate limit on ip, retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds",
-            }, status=400)
-
-    RATE_LIMIT_DB[ip] = time.time()
+    check_rate_limit_ip = check_rate_limit(ip, now)
+    if check_rate_limit_ip:
+        return check_rate_limit_ip
 
     try:
         data = request.json
     except InvalidUsage:
-        logger.info(f"Unvalid json in request, body is : {request.body}")
+        logger.info(f"Invalid json in request, body is : {request.body}")
         return json_response({
             "status": "error",
             "code": "error_bad_json",
-            "content": "InvalidUsage, body isn't proper json",
+            "content": "Invalid usage, body isn't proper json",
         }, status=400)
 
     if not data or "domain" not in data:
@@ -98,22 +105,14 @@ async def check_http(request):
         return json_response({
             "status": "error",
             "code": "error_no_domain",
-            "content": "request must specify a domain",
+            "content": "Request must specify a domain",
         }, status=400)
 
     domain = data["domain"]
 
-    if domain in RATE_LIMIT_DB:
-        since_last_attempt = now - RATE_LIMIT_DB[domain]
-        if since_last_attempt < RATE_LIMIT_SECONDS:
-            logger.info(f"Rate limite {domain}, can retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds")
-            return json_response({
-                "status": "error",
-                "code": "error_rate_limit",
-                "content": f"Rate limit on domain, retry in {int(RATE_LIMIT_SECONDS - since_last_attempt)} seconds",
-            }, status=400)
-
-    RATE_LIMIT_DB[domain] = time.time()
+    check_rate_limit_domain = check_rate_limit(domain, now)
+    if check_rate_limit_domain:
+        return check_rate_limit_domain
 
     if not validators.domain(domain):
         logger.info(f"Invalid request, is not in the right format (domain is : {domain})")
