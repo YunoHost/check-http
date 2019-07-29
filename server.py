@@ -57,6 +57,7 @@ async def check_port_is_open(ip, port):
     return result == 0
 
 
+# FIXME : remove it ? not used anymore...
 async def query_dns(host, dns_entry_type):
     loop = asyncio.get_event_loop()
     dns_resolver = aiodns.DNSResolver(loop=loop)
@@ -111,7 +112,7 @@ async def check_http(request):
     try:
         data = request.json
     except InvalidUsage:
-        logger.info(f"Invalid json in request, body is : {request.body}")
+        logger.info(f"Invalid json in request, body is: {request.body}")
         return json_response({
             "status": "error",
             "code": "error_bad_json",
@@ -119,21 +120,26 @@ async def check_http(request):
         }, status=400)
 
     if not data or "domain" not in data or "nonce" not in data:
-        logger.info(f"Unvalid request didn't specified a domain and a nonce id (body is : {request.body}")
+        logger.info(f"Invalid request: didn't specified a domain and a nonce id (body is: {request.body}")
         return json_response({
             "status": "error",
-            "code": "error_no_domain",
+            "code": "error_no_domain_",
             "content": "Request must specify a domain and a nonce",
         }, status=400)
 
     domain = data["domain"]
 
+    # Since now we are only checking the IP itself, it seems
+    # unecessary to also have a rate limit on domains since the
+    # rate limit on IP will be hit first ...
+    # That would simplify some code, for example we could add the
+    # rate limit check in a decorator for each route/check
     check_rate_limit_domain = check_rate_limit(domain, now)
     if check_rate_limit_domain:
         return check_rate_limit_domain
 
     if not validators.domain(domain):
-        logger.info(f"Invalid request, is not in the right format (domain is : {domain})")
+        logger.info(f"Invalid request, is not in the right format (domain is: {domain})")
         return json_response({
             "status": "error",
             "code": "error_domain_bad_format",
@@ -145,7 +151,7 @@ async def check_http(request):
     # nonce id is arbitrarily defined to be a
     # 16-digit hexadecimal string
     if not re.match(r"^[a-f0-9]{16}$", nonce):
-        logger.info(f"Invalid request, is not in the right format (nonce is : {nonce})")
+        logger.info(f"Invalid request, is not in the right format (nonce is: {nonce})")
         return json_response({
             "status": "error",
             "code": "error_nonce_bad_format",
@@ -172,7 +178,7 @@ async def check_http(request):
             return json_response({
                 "status": "error",
                 "code": "error_http_check_connection_error",
-                "content": "connection error, could not connect to the requested domain, it's very likely unreachable",
+                "content": "Connection error: could not connect to the requested domain, it's very likely unreachable",
             }, status=418)
         except Exception:
             import traceback
@@ -181,7 +187,7 @@ async def check_http(request):
             return json_response({
                 "status": "error",
                 "code": "error_http_check_unknown_error",
-                "content": "an error happen while trying to get your domain, it's very likely unreachable",
+                "content": "An error happened while trying to reach your domain, it's very likely unreachable",
             }, status=400)
 
     return json_response({"status": "ok"})
@@ -220,11 +226,11 @@ async def check_ports(request):
     try:
         data = request.json
     except InvalidUsage:
-        logger.info(f"Invalid json in request, body is : {request.body}")
+        logger.info(f"Invalid json in request, body is: {request.body}")
         return json_response({
             "status": "error",
             "code": "error_bad_json",
-            "content": "Invalid usage, body isn't proper json",
+            "content": "Invalid usage: body isn't proper json",
         }, status=400)
 
     def is_port_number(p):
@@ -232,18 +238,18 @@ async def check_ports(request):
 
     # Check "ports" exist in request and is a list of port
     if not data or "ports" not in data:
-        logger.info(f"Unvalid request didn't specified a ports list (body is : {request.body}")
+        logger.info(f"Invalid request didn't specified a ports list (body is: {request.body}")
         return json_response({
             "status": "error",
             "code": "error_no_ports_list",
             "content": "Request must specify a list of ports to check",
         }, status=400)
     elif not isinstance(data["ports"], list) or any(not is_port_number(p) for p in data["ports"]) or len(data["ports"]) > 30 or data["ports"] == []:
-        logger.info(f"Invalid request, ports list is not an actual list of ports, or is too long : {request.body}")
+        logger.info(f"Invalid request, ports list is not an actual list of ports, or is too long: {request.body}")
         return json_response({
             "status": "error",
             "code": "error_invalid_ports_list",
-            "content": "This is not an acceptable port list : ports must be between 0 and 65535 and at most 30 ports can be checked",
+            "content": "This is not an acceptable port list: ports must be between 0 and 65535 and at most 30 ports can be checked",
         }, status=400)
 
     ports = set(data["ports"])  # Keep only a set so that we get unique ports
@@ -271,7 +277,7 @@ async def check_smtp(request):
 
 @app.route("/")
 async def main(request):
-    return html("You aren't really supposed to use this website using your browser.<br><br>It's a small server to check if a YunoHost instance can be reached by http before trying to instal a LE certificate.")
+    return html("You aren't really supposed to use this website using your browser.<br><br>It's a small server with an API to check if a services running on YunoHost instance can be reached from 'the global internet'.")
 
 
 if __name__ == "__main__":
