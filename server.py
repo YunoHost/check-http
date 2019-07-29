@@ -4,6 +4,7 @@ import asyncio
 import aiodns
 import aiohttp
 import validators
+import socket
 
 from sanic import Sanic
 from sanic.log import logger
@@ -48,6 +49,14 @@ def check_rate_limit(key, now):
     RATE_LIMIT_DB[key] = time.time()
 
 
+async def check_port_is_open(ip, port):
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(2)
+    result = sock.connect_ex((ip, port))
+    return result == 0
+
+
 async def query_dns(host, dns_entry_type):
     loop = asyncio.get_event_loop()
     dns_resolver = aiodns.DNSResolver(loop=loop)
@@ -62,7 +71,7 @@ async def query_dns(host, dns_entry_type):
         logger.error("Unhandled error while resolving DNS entry")
 
 
-@app.route("/check/", methods=["POST"])
+@app.route("/check-http/", methods=["POST"])
 async def check_http(request):
     """
     This function received an HTTP request from a YunoHost instance while this
@@ -176,6 +185,78 @@ async def check_http(request):
             }, status=400)
 
     return json_response({"status": "ok"})
+
+
+@app.route("/check-ports/", methods=["POST"])
+async def check_ports(request):
+    """
+    This function received an HTTP request from a YunoHost instance while this
+    server is hosted on our infrastructure. The request is expected to be a
+    POST request with a body like {"ports": [80,443,22,25]}
+
+    The general workflow is the following:
+
+    - grab the ip from the request
+    - check for ip based rate limit (see RATE_LIMIT_SECONDS value)
+    - get json from body and ports list from it
+    - check ports are opened or closed
+    - answer the list of opened / closed ports
+    """
+
+    # this is supposed to be a fast operation if run often enough
+    now = time.time()
+    clear_rate_limit_db(now)
+
+    # ############################################# #
+    #  Validate request and extract the parameters  #
+    # ############################################# #
+
+    ip = request.ip
+
+    check_rate_limit_ip = check_rate_limit(ip, now)
+    if check_rate_limit_ip:
+        return check_rate_limit_ip
+
+    try:
+        data = request.json
+    except InvalidUsage:
+        logger.info(f"Invalid json in request, body is : {request.body}")
+        return json_response({
+            "status": "error",
+            "code": "error_bad_json",
+            "content": "Invalid usage, body isn't proper json",
+        }, status=400)
+
+    def is_port_number(p):
+        return isinstance(p, int) and p > 0 and p < 65535
+
+    # Check "ports" exist in request and is a list of port
+    if not data or "ports" not in data:
+        logger.info(f"Unvalid request didn't specified a ports list (body is : {request.body}")
+        return json_response({
+            "status": "error",
+            "code": "error_no_ports_list",
+            "content": "Request must specify a list of ports to check",
+        }, status=400)
+    elif not isinstance(data["ports"], list) or any(not is_port_number(p) for p in data["ports"]) or len(data["ports"]) > 30 or data["ports"] == []:
+        logger.info(f"Invalid request, ports list is not an actual list of ports, or is too long : {request.body}")
+        return json_response({
+            "status": "error",
+            "code": "error_invalid_ports_list",
+            "content": "This is not an acceptable port list : ports must be between 0 and 65535 and at most 30 ports can be checked",
+        }, status=400)
+
+    ports = set(data["ports"])  # Keep only a set so that we get unique ports
+
+    # ############################################# #
+    #  Run the actual check                         #
+    # ############################################# #
+
+    result = {}
+    for port in ports:
+        result[port] = await check_port_is_open(ip, port)
+
+    return json_response({"status": "ok", "ports": result})
 
 
 @app.route("/")
