@@ -1,3 +1,4 @@
+import re
 import time
 import asyncio
 import aiodns
@@ -65,8 +66,13 @@ async def query_dns(host, dns_entry_type):
 async def check_http(request):
     """
     This function received an HTTP request from a YunoHost instance while this
-    server is hosted on our infrastructure. The expected request body is:
-    {"domain": "domain-to-check.tld"} and the method POST
+    server is hosted on our infrastructure. The request is expected to be a
+    POST request with a body like {"domain": "domain-to-check.tld",
+                                   "nonce": "1234567890abcdef" }
+
+    The nonce value is a single-use ID, and we will try to reach
+    http://domain.tld/.well-known/ynh-{nonce} which should return 200 if we
+    are indeed reaching the right server.
 
     The general workflow is the following:
 
@@ -75,13 +81,17 @@ async def check_http(request):
     - get json from body and domain from it
     - check for domain based rate limit (see RATE_LIMIT_SECONDS value)
     - check domain is in valid format
-    - now try to do an http request on the ip using the domain as target host
+    - try to do an http request on the ip (using the domain as target host) for the page /.well-known/ynh-diagnosis/{nonce}
     - answer saying if the domain can be reached
     """
 
     # this is supposed to be a fast operation if run often enough
     now = time.time()
     clear_rate_limit_db(now)
+
+    # ############################################# #
+    #  Validate request and extract the parameters  #
+    # ############################################# #
 
     ip = request.ip
 
@@ -99,12 +109,12 @@ async def check_http(request):
             "content": "Invalid usage, body isn't proper json",
         }, status=400)
 
-    if not data or "domain" not in data:
-        logger.info(f"Unvalid request didn't specified a domain (body is : {request.body}")
+    if not data or "domain" not in data or "nonce" not in data:
+        logger.info(f"Unvalid request didn't specified a domain and a nonce id (body is : {request.body}")
         return json_response({
             "status": "error",
             "code": "error_no_domain",
-            "content": "Request must specify a domain",
+            "content": "Request must specify a domain and a nonce",
         }, status=400)
 
     domain = data["domain"]
@@ -121,14 +131,32 @@ async def check_http(request):
             "content": "domain is not in the right format (do not include http:// or https://)",
         }, status=400)
 
+    nonce = data["nonce"]
+
+    # nonce id is arbitrarily defined to be a
+    # 16-digit hexadecimal string
+    if not re.match(r"^[a-f0-9]{16}$", nonce):
+        logger.info(f"Invalid request, is not in the right format (nonce is : {nonce})")
+        return json_response({
+            "status": "error",
+            "code": "error_nonce_bad_format",
+            "content": "nonce is not in the right format (it should be a 16-digit hexadecimal string)",
+        }, status=400)
+
+    # ############################################# #
+    #  Run the actual check                         #
+    # ############################################# #
+
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.get("http://" + ip,
+            url = "http://" + ip + "/.well-known/ynh-diagnosis/" + nonce
+            async with session.get(url,
                                    headers={"Host": domain},
                                    timeout=aiohttp.ClientTimeout(total=30)) as response:
                 # XXX in the futur try to do a double check with the server to
                 # see if the correct content is get
                 await response.text()
+                assert response.status == 200
                 logger.info(f"Success when checking http access for {domain} asked by {ip}")
         # TODO various kind of errors
         except aiohttp.client_exceptions.ClientConnectorError:
