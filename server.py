@@ -259,6 +259,16 @@ async def check_ports(request):
     return json_response({"status": "ok", "ports": result})
 
 
+@app.route("/check-smtp/", methods=["POST"])
+async def check_smtp(request):
+
+    # TODO
+
+    return json_reponse({"status": "error",
+                         "code": "error_not_implemented_yet",
+                         "content": "This is not yet implemented"})
+
+
 @app.route("/")
 async def main(request):
     return html("You aren't really supposed to use this website using your browser.<br><br>It's a small server to check if a YunoHost instance can be reached by http before trying to instal a LE certificate.")
