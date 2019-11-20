@@ -62,6 +62,7 @@ async def check_port_is_open(ip, port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2)
     result = sock.connect_ex((ip, port))
+    sock.close()
     return result == 0
 
 
@@ -111,7 +112,7 @@ async def check_http(request):
     #  Validate request and extract the parameters  #
     # ############################################# #
 
-    ip = request.ip
+    ip = request.headers["x-forwarded-for"].split(",")[0]
 
     check_rate_limit_ip = check_rate_limit(ip, now)
     if check_rate_limit_ip:
@@ -175,30 +176,43 @@ async def check_http(request):
             url = "http://" + ip + "/.well-known/ynh-diagnosis/" + nonce
             async with session.get(url,
                                    headers={"Host": domain},
-                                   timeout=aiohttp.ClientTimeout(total=30)) as response:
+                                   allow_redirects=False,
+                                   timeout=aiohttp.ClientTimeout(total=10)) as response:
                 # XXX in the futur try to do a double check with the server to
                 # see if the correct content is get
                 await response.text()
-                assert response.status == 200
-                logger.info(f"Success when checking http access for {domain} asked by {ip}")
         # TODO various kind of errors
-        except aiohttp.client_exceptions.ClientConnectorError:
+        except (aiohttp.client_exceptions.ServerTimeoutError, asyncio.TimeoutError):
+            return json_response({
+                "status": "error",
+                "code": "error_http_check_timeout",
+                "content": "Timed-out while trying to contact your server from outside. It appears to be unreachable. You should check that you're correctly forwarding port 80, that nginx is running, and that a firewall is not interfering.",
+            }, status=418)
+        except aiohttp.client_exceptions.ClientConnectorError as e:
             return json_response({
                 "status": "error",
                 "code": "error_http_check_connection_error",
-                "content": "Connection error: could not connect to the requested domain, it's very likely unreachable",
+                "content": "Connection error: could not connect to the requested domain, it's very likely unreachable. Raw error: " + str(e),
             }, status=418)
-        except Exception:
+        except Exception as e:
             import traceback
             traceback.print_exc()
 
             return json_response({
                 "status": "error",
                 "code": "error_http_check_unknown_error",
-                "content": "An error happened while trying to reach your domain, it's very likely unreachable",
+                "content": "An error happened while trying to reach your domain, it's very likely unreachable. Raw error: %s" % e,
             }, status=400)
 
-    return json_response({"status": "ok"})
+    if response.status != 200:
+        return json_response({
+            "status": "error",
+            "code": "error_http_check_bad_status_code",
+            "content": "Could not reach your server as expected, it returned code %s. It might be that another machine answered instead of your server. You should check that you're correctly forwarding port 80, that your nginx configuration is up to date, and that a reverse-proxy is not interfering." % response.status,
+        }, status=418)
+    else:
+        logger.info(f"Success when checking http access for {domain} asked by {ip}")
+        return json_response({"status": "ok"})
 
 
 @app.route("/check-ports/", methods=["POST"])
@@ -225,7 +239,7 @@ async def check_ports(request):
     #  Validate request and extract the parameters  #
     # ############################################# #
 
-    ip = request.ip
+    ip = request.headers["x-forwarded-for"].split(",")[0]
 
     check_rate_limit_ip = check_rate_limit(ip, now)
     if check_rate_limit_ip:
@@ -268,7 +282,7 @@ async def check_ports(request):
 
     result = {}
     for port in ports:
-        result[port] = await check_port_is_open(ip, port)
+        result[int(port)] = await check_port_is_open(ip, port)
 
     return json_response({"status": "ok", "ports": result})
 
