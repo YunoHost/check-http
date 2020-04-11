@@ -59,7 +59,10 @@ def check_rate_limit(key, now):
 
 async def check_port_is_open(ip, port):
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if ":" in ip:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    else:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2)
     result = sock.connect_ex((ip, port))
     sock.close()
