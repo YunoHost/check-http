@@ -174,6 +174,9 @@ async def check_http(request):
     #  Run the actual check                         #
     # ############################################# #
 
+    if ":" in ip:
+        ip = "[%s]" % ip
+
     async with aiohttp.ClientSession() as session:
         try:
             url = "http://" + ip + "/.well-known/ynh-diagnosis/" + nonce
