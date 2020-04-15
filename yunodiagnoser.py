@@ -304,12 +304,60 @@ async def check_port_is_open(ip, port):
 
 @app.route("/check-smtp/", methods=["POST"])
 async def check_smtp(request):
+    """
+    This function received an HTTP request from a YunoHost instance while this
+    server is hosted on our infrastructure. The request is expected to be a
+    POST request with an empty body
 
-    # TODO
+    The general workflow is the following:
 
-    return json_reponse({"status": "error",
-                         "code": "error_not_implemented_yet",
-                         "content": "This is not yet implemented"})
+    - grab the ip from the request
+    - check for ip based rate limit (see RATE_LIMIT_SECONDS value)
+    - open a socket on port 25
+    - the server is supposed to say '200 domain.tld Service ready'
+    - we return the domain.tld found
+    """
+
+    # this is supposed to be a fast operation if run often enough
+    now = time.time()
+    clear_rate_limit_db(now)
+
+    # ############################################# #
+    #  Validate request and extract the parameters  #
+    # ############################################# #
+
+    ip = request.headers["x-forwarded-for"].split(",")[0]
+
+    check_rate_limit_ip = check_rate_limit(ip, now)
+    if check_rate_limit_ip:
+        return check_rate_limit_ip
+
+    if ":" in ip:
+        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+    else:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    sock.settimeout(2)
+    result = sock.connect_ex((ip, 25))
+    if result != 0:
+        return json_response({
+            'status': "error_smtp_unreachable",
+            'content': "Could not open a connection on port 25, probably because of a firewall or port forwarding issue"
+        })
+
+    try:
+        recv = sock.recv(1024).decode('utf-8')
+        assert recv[:3] == "220"
+        helo_domain = recv.split()[1].strip()
+    except:
+        return json_response({
+            'status': "error_smtp_bad_answer",
+            'content': "SMTP server did not reply with '220 domain.tld' after opening socket ... Maybe another machine answered."
+        })
+    finally:
+        sock.close()
+
+    return json_response({'status': 'ok', 'helo': helo_domain})
 
 
 @app.route("/")
