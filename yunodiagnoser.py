@@ -119,7 +119,7 @@ async def check_http(request):
         assert data, "Empty request body"
         assert isinstance(data, dict), "Request body ain't a proper dict"
         assert "domains" in data, "No 'domains' provided"
-        assert "nounce" in data, "No 'nounce' provided"
+        assert "nonce" in data, "No 'nonce' provided"
 
         # Check domain list format
         assert isinstance(data["domains"], list), "'domains' ain't a list"
@@ -152,11 +152,11 @@ async def check_http(request):
             }
         }, status=400)
 
-    domain = data["domains"]
+    domains = data["domains"]
     nonce = data["nonce"]
 
     return json_response({
-        "http": {domain: await check_http_domain(ip, domain, nonce)} for domain in domains}
+        "http": {domain: await check_http_domain(ip, domain, nonce) for domain in domains}
     })
 
 
