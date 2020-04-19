@@ -264,7 +264,7 @@ async def check_ports(request):
 
         def is_port_number(p):
             return isinstance(p, int) and p > 0 and p < 65535
-        assert all(not is_port_number(p) for p in data["ports"]), "'ports' should a list of valid port numbers"
+        assert all(is_port_number(p) for p in data["ports"]), "'ports' should a list of valid port numbers"
     except AssertionError as e:
         logger.info(f"Invalid request: {e} ... Original request body was: {request.body}")
         return json_response({
