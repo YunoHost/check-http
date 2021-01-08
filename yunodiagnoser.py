@@ -24,6 +24,7 @@ RATE_LIMIT_DB = {}
 RATE_LIMIT_SECONDS = 300
 RATE_LIMIT_NB_REQUESTS = 10
 
+
 def clear_rate_limit_db(now):
     to_delete = []
 
@@ -349,7 +350,10 @@ async def check_smtp(request):
         recv = sock.recv(1024).decode('utf-8')
         assert recv[:3] == "220"
         helo_domain = recv.split()[1].strip()
-    except:
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error when trying to get smtp answer: {e}")
         return json_response({
             'status': "error_smtp_bad_answer",
             'content': "SMTP server did not reply with '220 domain.tld' after opening socket ... Maybe another machine answered."
