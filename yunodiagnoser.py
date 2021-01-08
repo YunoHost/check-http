@@ -303,7 +303,8 @@ async def check_port_is_open(ip, port):
         return False
     else:
         writer.close()
-        await writer.wait_closed()
+        # XXX we are still in python 3.6 in prod :(
+        # await writer.wait_closed()
 
         return True
 
@@ -382,7 +383,8 @@ async def check_smtp(request):
         })
     finally:
         writer.close()
-        await writer.wait_closed()
+        # XXX we are still in python 3.6 in prod :(
+        # await writer.wait_closed()
 
     return json_response({'status': 'ok', 'helo': helo_domain})
 
