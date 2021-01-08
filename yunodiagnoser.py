@@ -125,7 +125,7 @@ async def check_http(request):
         # Check domain list format
         assert isinstance(data["domains"], list), "'domains' ain't a list"
         assert len(data["domains"]) > 0, "'domains' list is empty"
-        assert len(data["domains"]) < 30, "You cannot test that many domains"
+        assert len(data["domains"]) < 60, "You cannot test that many domains"
         for domain in data["domains"]:
             assert isinstance(domain, str), "domain names must be strings"
             assert len(domain) < 100, "Domain %s name seems pretty long, that's suspicious...?" % domain
