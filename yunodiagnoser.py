@@ -343,22 +343,35 @@ async def check_smtp(request):
         return check_rate_limit_ip
 
     if ":" in ip:
-        sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+        futur = asyncio.open_connection(ip, 25, family=socket.AF_INET6)
     else:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        futur = asyncio.open_connection(ip, 25, family=socket.AF_INET)
 
-    sock.settimeout(2)
-    result = sock.connect_ex((ip, 25))
-    if result != 0:
+    try:
+        reader, writer = await asyncio.wait_for(futur, timeout=2)
+    except (asyncio.TimeoutError, ConnectionRefusedError):
+        return json_response({
+            'status': "error_smtp_unreachable",
+            'content': "Could not open a connection on port 25, probably because of a firewall or port forwarding issue"
+        })
+    except Exception:
+        import traceback
+        traceback.print_exc()
         return json_response({
             'status': "error_smtp_unreachable",
             'content': "Could not open a connection on port 25, probably because of a firewall or port forwarding issue"
         })
 
     try:
-        recv = sock.recv(1024).decode('utf-8')
+        recv = await asyncio.wait_for(reader.read(1024), timeout=200)
+        recv = recv.decode("Utf-8")
         assert recv[:3] == "220"
         helo_domain = recv.split()[1].strip()
+    except asyncio.TimeoutError:
+        return json_response({
+            'status': "error_smtp_timeout_answer",
+            'content': "SMTP server took more than 2 seconds to answer."
+        })
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -368,7 +381,8 @@ async def check_smtp(request):
             'content': "SMTP server did not reply with '220 domain.tld' after opening socket ... Maybe another machine answered."
         })
     finally:
-        sock.close()
+        writer.close()
+        await writer.wait_closed()
 
     return json_response({'status': 'ok', 'helo': helo_domain})
 
