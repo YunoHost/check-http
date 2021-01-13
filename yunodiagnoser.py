@@ -295,7 +295,7 @@ async def check_port_is_open(ip, port):
 
     try:
         _, writer = await asyncio.wait_for(futur, timeout=2)
-    except (asyncio.TimeoutError, ConnectionRefusedError):
+    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):  # OSError: [Errno 113] No route to host
         return False
     except Exception:
         import traceback
@@ -350,7 +350,7 @@ async def check_smtp(request):
 
     try:
         reader, writer = await asyncio.wait_for(futur, timeout=2)
-    except (asyncio.TimeoutError, ConnectionRefusedError):
+    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):  # OSError: [Errno 113] No route to host
         return json_response({
             'status': "error_smtp_unreachable",
             'content': "Could not open a connection on port 25, probably because of a firewall or port forwarding issue"
