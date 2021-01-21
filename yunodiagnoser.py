@@ -182,7 +182,7 @@ async def check_http_domain(ip, domain, nonce):
                 "status": "error_http_check_timeout",
                 "content": "Timed-out while trying to contact your server from outside. It appears to be unreachable. You should check that you're correctly forwarding port 80, that nginx is running, and that a firewall is not interfering.",
             }
-        except aiohttp.client_exceptions.ClientConnectorError as e:
+        except (OSError, aiohttp.client_exceptions.ClientConnectorError) as e:  # OSError: [Errno 113] No route to host
             return {
                 "status": "error_http_check_connection_error",
                 "content": "Connection error: could not connect to the requested domain, it's very likely unreachable. Raw error: " + str(e),
