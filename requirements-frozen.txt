@@ -20,7 +20,7 @@ typing-extensions==3.10.0.0
 ujson==4.0.2
 uvloop==0.15.2
 validators==0.18.2
-websockets==8.1
+websockets==9.1
 yarl==1.6.3
 zope.event==4.5.0
 zope.interface==5.4.0
