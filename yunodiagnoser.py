@@ -10,7 +10,7 @@ from sanic.log import logger
 from sanic.response import html, json as json_response
 from sanic.exceptions import InvalidUsage
 
-app = Sanic()
+app = Sanic(__name__)
 
 # ########################################################################### #
 #   Rate limit                                                                #
