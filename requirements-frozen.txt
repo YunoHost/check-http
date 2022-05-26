@@ -17,7 +17,7 @@ sanic==21.3.4
 sanic-routing==0.6.2
 six==1.16.0
 typing-extensions==3.10.0.0
-ujson==4.0.2
+ujson==5.2.0
 uvloop==0.15.2
 validators==0.18.2
 websockets==8.1
