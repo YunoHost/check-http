@@ -12,6 +12,9 @@ from sanic.response import html, json as json_response
 from sanic.exceptions import InvalidUsage
 
 app = Sanic(__name__)
+# Don't override values from environment variables
+app.config.setdefault('MAX_DOMAINS', 50)
+app.config.setdefault('MAX_PORTS', 30)
 
 # ########################################################################### #
 #   Rate limit                                                                #
@@ -126,7 +129,7 @@ async def check_http(request):
         # Check domain list format
         assert isinstance(data["domains"], list), "'domains' ain't a list"
         assert len(data["domains"]) > 0, "'domains' list is empty"
-        assert len(data["domains"]) < request.app.ctx.max_domains, "You cannot test that many domains"
+        assert len(data["domains"]) < int(request.app.config.MAX_DOMAINS), "You cannot test that many domains"
         for domain in data["domains"]:
             assert isinstance(domain, str), "domain names must be strings"
             assert len(domain) < 100, "Domain %s name seems pretty long, that's suspicious...?" % domain
@@ -261,7 +264,7 @@ async def check_ports(request):
 
         assert isinstance(data["ports"], list), "'ports' ain't a list"
         assert len(data["ports"]) > 0, "'ports' list is empty"
-        assert len(data["ports"]) < request.app.ctx.max_ports, "That's too many ports to check"
+        assert len(data["ports"]) < int(request.app.config.MAX_PORTS), "That's too many ports to check"
         assert len(data["ports"]) == len(set(data["ports"])), "'ports' list should contain unique elements"
 
         def is_port_number(p):
@@ -403,12 +406,14 @@ def serve():
     parser.add_argument('--debug', help='Enables debug output (slows server)', action='store_true')
     parser.add_argument('--auto-reload', help='Reload app whenever its source code is changed. Enabled by default in debug mode.', default=None, action='store_true')
 
-    # Settings
-    parser.add_argument('--max-domains', help='Maximum domains allowed to check in a batch', default=100, type=int)
-    parser.add_argument('--max-ports', help='Maximum ports allowed to check in a batch', default=50, type=int)
+    # Inherit from environment variables or defaults
+    parser.add_argument('--max-domains', help='Maximum domains allowed to check in a batch', default=app.config.MAX_DOMAINS, type=int)
+    parser.add_argument('--max-ports', help='Maximum ports allowed to check in a batch', default=app.config.MAX_PORTS, type=int)
 
     args, _ = parser.parse_known_args()
-    app.ctx.args = args
+
+    for arg in ('max_domains', 'max_ports'):
+        app.config[arg.upper()] = getattr(args, arg)
 
     app.run(
         host=args.host,
