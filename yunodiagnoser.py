@@ -4,6 +4,7 @@ import asyncio
 import re
 import socket
 import time
+from argparse import ArgumentParser
 
 import aiohttp
 import validators
@@ -130,7 +131,9 @@ async def check_http(request: Request) -> HTTPResponse:
         # Check domain list format
         assert isinstance(data["domains"], list), "'domains' ain't a list"
         assert len(data["domains"]) > 0, "'domains' list is empty"
-        assert len(data["domains"]) < 60, "You cannot test that many domains"
+        assert len(data["domains"]) < request.app.config.max_domains, (
+            "You cannot test that many domains"
+        )
         for domain in data["domains"]:
             assert isinstance(domain, str), "domain names must be strings"
             assert len(domain) < 100, (
@@ -275,7 +278,9 @@ async def check_ports(request: Request) -> HTTPResponse:
 
         assert isinstance(data["ports"], list), "'ports' ain't a list"
         assert len(data["ports"]) > 0, "'ports' list is empty"
-        assert len(data["ports"]) < 30, "That's too many ports to check"
+        assert len(data["ports"]) < request.app.config.max_ports, (
+            "That's too many ports to check"
+        )
         assert len(data["ports"]) == len(set(data["ports"])), (
             "'ports' list should contain unique elements"
         )
@@ -415,5 +420,56 @@ async def main(request: Request) -> HTTPResponse:
     )
 
 
+def serve() -> None:
+    parser = ArgumentParser("yunodiagnoser.py")
+    parser.add_argument("--host", help="Address to host on", default="0.0.0.0")
+    parser.add_argument("--port", help="Port to host on", default=7000, type=int)
+    parser.add_argument(
+        "--workers",
+        help="Number of processes received before it is respected",
+        default=16,
+        type=int,
+    )
+    parser.add_argument(
+        "--debug", help="Enables debug output (slows server)", action="store_true"
+    )
+    parser.add_argument(
+        "--auto-reload",
+        help=(
+            "Reload app whenever its source code is changed. "
+            "Enabled by default in debug mode."
+        ),
+        default=None,
+        action="store_true",
+    )
+
+    # Settings
+    parser.add_argument(
+        "--max-domains",
+        help="Maximum domains allowed to check in a batch",
+        default=60,
+        type=int,
+    )
+    parser.add_argument(
+        "--max-ports",
+        help="Maximum ports allowed to check in a batch",
+        default=30,
+        type=int,
+    )
+
+    args, _ = parser.parse_known_args()
+
+    app.config.max_domains = args.max_domains
+    app.config.max_ports = args.max_ports
+
+    app.run(
+        host=args.host,
+        port=args.port,
+        workers=args.workers,
+        debug=args.debug,
+        auto_reload=args.auto_reload,
+    )
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7000, workers=16)
+    serve()
