@@ -13,7 +13,7 @@ from sanic.exceptions import InvalidUsage
 
 app = Sanic(__name__)
 # Don't override values from environment variables
-app.config.setdefault('MAX_DOMAINS', 50)
+app.config.setdefault('MAX_DOMAINS', 60)
 app.config.setdefault('MAX_PORTS', 30)
 
 # ########################################################################### #
