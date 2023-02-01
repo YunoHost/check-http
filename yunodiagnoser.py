@@ -4,6 +4,7 @@ import asyncio
 import aiohttp
 import validators
 import socket
+from argparse import ArgumentParser
 
 from sanic import Sanic
 from sanic.log import logger
@@ -125,7 +126,7 @@ async def check_http(request):
         # Check domain list format
         assert isinstance(data["domains"], list), "'domains' ain't a list"
         assert len(data["domains"]) > 0, "'domains' list is empty"
-        assert len(data["domains"]) < 60, "You cannot test that many domains"
+        assert len(data["domains"]) < request.app.ctx.max_domains, "You cannot test that many domains"
         for domain in data["domains"]:
             assert isinstance(domain, str), "domain names must be strings"
             assert len(domain) < 100, "Domain %s name seems pretty long, that's suspicious...?" % domain
@@ -260,7 +261,7 @@ async def check_ports(request):
 
         assert isinstance(data["ports"], list), "'ports' ain't a list"
         assert len(data["ports"]) > 0, "'ports' list is empty"
-        assert len(data["ports"]) < 30, "That's too many ports to check"
+        assert len(data["ports"]) < request.app.ctx.max_ports, "That's too many ports to check"
         assert len(data["ports"]) == len(set(data["ports"])), "'ports' list should contain unique elements"
 
         def is_port_number(p):
@@ -394,5 +395,29 @@ async def main(request):
     return html("You aren't really supposed to use this website using your browser.<br><br>It's a small server with an API to check if a services running on YunoHost instance can be reached from 'the global internet'.")
 
 
+def serve():
+    parser = ArgumentParser('yunodiagnoser.py')
+    parser.add_argument('--host', help='Address to host on', default='0.0.0.0')
+    parser.add_argument('--port', help='Port to host on', default=8000, type=int)
+    parser.add_argument('--workers', help='Number of processes received before it is respected', default=16, type=int)
+    parser.add_argument('--debug', help='Enables debug output (slows server)', action='store_true')
+    parser.add_argument('--auto-reload', help='Reload app whenever its source code is changed. Enabled by default in debug mode.', default=None, action='store_true')
+
+    # Settings
+    parser.add_argument('--max-domains', help='Maximum domains allowed to check in a batch', default=100, type=int)
+    parser.add_argument('--max-ports', help='Maximum ports allowed to check in a batch', default=50, type=int)
+
+    args, _ = parser.parse_known_args()
+    app.ctx.args = args
+
+    app.run(
+        host=args.host,
+        port=args.port,
+        workers=args.workers,
+        debug=args.debug,
+        auto_reload=args.auto_reload,
+    )
+
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=7000, workers=16)
+    serve()
