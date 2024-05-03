@@ -7,7 +7,7 @@ import socket
 
 from sanic import Sanic
 from sanic.log import logger
-from sanic.response import html, json as json_response
+from sanic.response import html, raw, json as json_response
 from sanic.exceptions import InvalidUsage
 
 app = Sanic(__name__)
@@ -387,6 +387,16 @@ async def check_smtp(request):
         # await writer.wait_closed()
 
     return json_response({'status': 'ok', 'helo': helo_domain})
+
+
+@app.route("/robots.txt")
+async def robots(request):
+    return raw(
+        """
+        User-agent: *
+        Disallow: /
+        """
+    )
 
 
 @app.route("/")
