@@ -391,7 +391,12 @@ async def check_smtp(request):
 
 @app.route("/robots.txt")
 async def robots(request):
-    return raw("User-agent: *\nDisallow: /")
+    return raw(
+        """
+        User-agent: *
+        Disallow: /
+        """
+    )
 
 
 @app.route("/")
