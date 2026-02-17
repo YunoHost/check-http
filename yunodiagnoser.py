@@ -4,10 +4,10 @@ import asyncio
 import re
 import socket
 import time
-import traceback
 
 import aiohttp
 import validators
+from aiohttp.client_exceptions import ClientConnectorError, ServerTimeoutError
 from sanic import Sanic
 from sanic.exceptions import InvalidUsage
 from sanic.log import logger
@@ -16,6 +16,8 @@ from sanic.response import HTTPResponse, html
 from sanic.response import json as json_response
 
 app = Sanic(__name__)
+
+logger = logger  # noqa: PLW0127  This assignment is here for linter
 
 # ########################################################################### #
 #   Rate limit                                                                #
@@ -31,9 +33,9 @@ RATE_LIMIT_NB_REQUESTS = 10
 
 
 def clear_rate_limit_db(now: float) -> None:
+    """Remove too old rate limit values"""
     to_delete = []
 
-    "Remove too old rate limit values"
     for key, times in RATE_LIMIT_DB.items():
         # Remove values older RATE_LIMIT_SECONDS
         RATE_LIMIT_DB[key] = [t for t in times if now - t < RATE_LIMIT_SECONDS]
@@ -113,8 +115,8 @@ async def check_http(request: Request) -> HTTPResponse:
     try:
         data = request.json
     except InvalidUsage:
-        logger.info(f"Invalid json in request, body is: {request.body}")
-        msg = "Invalid usage, body isn't proper json"
+        msg = f"Invalid json in request, body isn't proper json (is: {request.body})"
+        logger.info(msg)
         return json_response(
             {"error": {"code": "error_bad_json", "content": msg}}, status=400
         )
@@ -151,7 +153,8 @@ async def check_http(request: Request) -> HTTPResponse:
         # Check nonce format
         assert isinstance(data["nonce"], str), "'nonce' ain't a string"
         assert re.match(r"^[a-f0-9]{16}$", data["nonce"]), (
-            "'nonce' is not in the right forwat (it should be a 16-digit hexadecimal string)"
+            "'nonce' is not in the right forwat (it should be a 16-digit "
+            "hexadecimal string)"
         )
     except AssertionError as e:
         msg = f"Invalid request: {e} ... Original request body was: {request.body}"
@@ -167,7 +170,7 @@ async def check_http(request: Request) -> HTTPResponse:
     return json_response({"http": result})
 
 
-async def check_http_domain(ip: str, domain: str, nonce):
+async def check_http_domain(ip: str, domain: str, nonce: str) -> dict[str, str]:
     # Handle IPv6
     if ":" in ip:
         ip = f"[{ip}]"
@@ -185,7 +188,7 @@ async def check_http_domain(ip: str, domain: str, nonce):
                 # see if the correct content is get
                 await response.text()
         # TODO various kind of errors
-        except (aiohttp.client_exceptions.ServerTimeoutError, asyncio.TimeoutError):
+        except (ServerTimeoutError, TimeoutError):
             msg = (
                 "Timed-out while trying to contact your server from outside. "
                 "It appears to be unreachable. You should check that you're "
@@ -193,17 +196,15 @@ async def check_http_domain(ip: str, domain: str, nonce):
                 "a firewall is not interfering."
             )
             return {"status": "error_http_check_timeout", "content": msg}
-        except (
-            OSError,
-            aiohttp.client_exceptions.ClientConnectorError,
-        ) as e:  # OSError: [Errno 113] No route to host
+        except (OSError, ClientConnectorError) as e:
+            # OSError: [Errno 113] No route to host
             msg = (
                 "Connection error: could not connect to the requested domain, "
                 f"it's very likely unreachable. Raw error: {e}"
             )
             return {"status": "error_http_check_connection_error", "content": msg}
         except Exception as e:
-            traceback.print_exc()
+            logger.exception("While trying to reach domain")
             msg = (
                 "An error happened while trying to reach your domain, "
                 f"it's very likely unreachable. Raw error: {e}"
@@ -261,8 +262,8 @@ async def check_ports(request: Request) -> HTTPResponse:
     try:
         data = request.json
     except InvalidUsage:
-        logger.info(f"Invalid json in request, body is: {request.body}")
-        msg = "Invalid usage, body isn't proper json"
+        msg = f"Invalid usage, body isn't proper json (body is {request.body}"
+        logger.info(msg)
         return json_response(
             {"error": {"code": "error_bad_json", "content": msg}}, status=400
         )
@@ -311,14 +312,11 @@ async def check_port_is_open(ip: str, port: int) -> bool:
 
     try:
         _, writer = await asyncio.wait_for(futur, timeout=2)
-    except (
-        TimeoutError,
-        ConnectionRefusedError,
-        OSError,
-    ):  # OSError: [Errno 113] No route to host
+    except (TimeoutError, ConnectionRefusedError, OSError):
+        # OSError: [Errno 113] No route to host
         return False
     except Exception:
-        traceback.print_exc()
+        logger.exception("While checking open port")
         return False
     else:
         writer.close()
@@ -370,22 +368,19 @@ async def check_smtp(request: Request) -> HTTPResponse:
 
     try:
         reader, writer = await asyncio.wait_for(futur, timeout=2)
-    except (
-        TimeoutError,
-        ConnectionRefusedError,
-        OSError,
-    ):  # OSError: [Errno 113] No route to host
+    except (TimeoutError, ConnectionRefusedError, OSError):
+        # OSError: [Errno 113] No route to host
         msg = (
             "Could not open a connection on port 25, probably because of "
             "a firewall or port forwarding issue",
         )
         return json_response({"status": "error_smtp_unreachable", "content": msg})
     except Exception:
-        traceback.print_exc()
         msg = (
             "Could not open a connection on port 25, probably because of "
             "a firewall or port forwarding issue",
         )
+        logger.exception(msg)
         return json_response({"status": "error_smtp_unreachable", "content": msg})
 
     try:
@@ -396,13 +391,12 @@ async def check_smtp(request: Request) -> HTTPResponse:
     except TimeoutError:
         msg = "SMTP server took more than 2 seconds to answer."
         return json_response({"status": "error_smtp_timeout_answer", "content": msg})
-    except Exception as e:
-        traceback.print_exc()
-        print(f"Error when trying to get smtp answer: {e}")
+    except Exception:
         msg = (
             "SMTP server did not reply with '220 domain.tld' after opening socket... "
             "Maybe another machine answered."
         )
+        logger.exception(msg)
         return json_response({"status": "error_smtp_bad_answer", "content": msg})
     finally:
         writer.close()
