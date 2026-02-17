@@ -131,7 +131,7 @@ async def check_http(request: Request) -> HTTPResponse:
         # Check domain list format
         assert isinstance(data["domains"], list), "'domains' ain't a list"
         assert len(data["domains"]) > 0, "'domains' list is empty"
-        assert len(data["domains"]) < request.app.config.max_domains, (
+        assert len(data["domains"]) < request.app.config.MAX_DOMAINS, (
             "You cannot test that many domains"
         )
         for domain in data["domains"]:
@@ -278,7 +278,7 @@ async def check_ports(request: Request) -> HTTPResponse:
 
         assert isinstance(data["ports"], list), "'ports' ain't a list"
         assert len(data["ports"]) > 0, "'ports' list is empty"
-        assert len(data["ports"]) < request.app.config.max_ports, (
+        assert len(data["ports"]) < request.app.config.MAX_PORTS, (
             "That's too many ports to check"
         )
         assert len(data["ports"]) == len(set(data["ports"])), (
@@ -459,8 +459,8 @@ def serve() -> None:
 
     args, _ = parser.parse_known_args()
 
-    app.config.max_domains = args.max_domains
-    app.config.max_ports = args.max_ports
+    app.config.MAX_DOMAINS = args.max_domains
+    app.config.MAX_PORTS = args.max_ports
 
     app.run(
         host=args.host,
